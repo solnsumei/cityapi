@@ -1,23 +1,9 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-import requests
+from tortoise.contrib.fastapi import register_tortoise
+from models import City, City_Pydantic, CityIn_Pydantic
 
 
 app = FastAPI()
-
-db = []
-world_api_url = "http://worldtimeapi.org/api/timezone"
-
-
-class City(BaseModel):
-    name: str
-    timezone: str
-
-
-def fetch_current_time_for_city(city: dict[str: str]):
-    r = requests.get(f"{world_api_url}/{city['timezone']}")
-    current_time = None if "error" in r.json() else r.json()["datetime"]
-    return {"name": city["name"], "timezone": city["timezone"], "current_time": current_time}
 
 
 @app.get("/")
@@ -27,25 +13,29 @@ def index():
 
 @app.get("/cities")
 async def get_cities():
-    results = []
-    for city in db:
-        city_with_current_time = fetch_current_time_for_city(city)
-        results.append(city_with_current_time)
-    return results
+    return await City_Pydantic.from_queryset(City.all())
 
 
 @app.get("/cities/{city_id}")
 async def get_city(city_id: int):
-    return fetch_current_time_for_city(db[city_id-1])
+    return await City_Pydantic.from_queryset_single(City.get(id=city_id))
 
 
 @app.post("/cities")
-async def create_city(city: City):
-    db.append(city.dict())
-    return db[-1]
+async def create_city(city: CityIn_Pydantic):
+    city_obj = await City.create(**city.dict())
+    return await City_Pydantic.from_tortoise_orm(city_obj)
 
 
 @app.delete("/cities/{city_id}")
 async def delete_city(city_id: int):
-    db.pop(city_id-1)
+    await City.filter(id=city_id).delete()
     return {"message": "Delete successful"}
+
+register_tortoise(
+    app,
+    db_url="sqlite://db.sqlite3",
+    modules={"models": ["models"]},
+    generate_schemas=True,
+    add_exception_handlers=True
+)

@@ -3,3 +3,4 @@ venv/
 .code
 .vscode
 .env
+db.sqlite3**

@@ -1,9 +1,25 @@
+import aiohttp
+import asyncio
 from fastapi import FastAPI
 from tortoise.contrib.fastapi import register_tortoise
+
 from models import City, City_Pydantic, CityIn_Pydantic
 
 
 app = FastAPI()
+session = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    global session
+    session = aiohttp.ClientSession()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    if session is not None:
+        await session.close()
 
 
 @app.get("/")
@@ -13,12 +29,24 @@ def index():
 
 @app.get("/cities")
 async def get_cities():
-    return await City_Pydantic.from_queryset(City.all())
+    cities = await City_Pydantic.from_queryset(City.all())
+    global session
+
+    tasks = []
+    for city in cities:
+        task = asyncio.create_task(City.get_current_time(city, session))
+        tasks.append(task)
+
+    await asyncio.gather(*tasks)
+    return cities
 
 
 @app.get("/cities/{city_id}")
 async def get_city(city_id: int):
-    return await City_Pydantic.from_queryset_single(City.get(id=city_id))
+    city = await City_Pydantic.from_queryset_single(City.get(id=city_id))
+    global session
+    await City.get_current_time(city, session)
+    return city
 
 
 @app.post("/cities")

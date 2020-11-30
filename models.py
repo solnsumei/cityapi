@@ -12,13 +12,17 @@ class City(Model):
     timezone = fields.CharField(50)
 
     def current_time(self) -> str:
-        r = requests.get(f"{world_api_url}/{self.timezone}")
-        current_time = 'No data' if "error" in r.json() else r.json()["datetime"]
-        return current_time
+        return ""
+
+    @classmethod
+    async def get_current_time(cls, obj, session):
+        async with session.get(f"{world_api_url}/{obj.timezone}") as response:
+            result = await response.json()
+            current_time = "No data" if "error" in result else result["datetime"]
+            obj.current_time = current_time
 
     class PydanticMeta:
         computed = ('current_time',)
-
 
 
 City_Pydantic = pydantic_model_creator(City, name="City")
